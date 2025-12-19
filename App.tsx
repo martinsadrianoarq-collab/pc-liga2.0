@@ -30,7 +30,12 @@ import {
   Save,
   Home,
   Menu,
-  LogOut
+  LogOut,
+  Trash2,
+  Clock,
+  Trophy,
+  Shield,
+  X
 } from 'lucide-react';
 
 const STORAGE_KEY = 'ligasim_saves';
@@ -49,6 +54,10 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewState>(ViewState.HOME);
   const [isSimulating, setIsSimulating] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string>('');
+  
+  // Load Modal State
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [savedFiles, setSavedFiles] = useState<SaveData[]>([]);
 
   // Derived State
   const table = useMemo(() => calculateTable(teams, matches), [teams, matches]);
@@ -99,18 +108,30 @@ const App: React.FC = () => {
     setTimeout(() => setSaveMessage(''), 2000);
   };
 
-  const handleLoadGame = () => {
-    const saves = getSavedGames();
-    if (saves.length === 0) return;
-    // Load most recent for now (UI could be expanded to pick)
-    const save = saves.sort((a,b) => b.timestamp - a.timestamp)[0];
-    
+  const handleOpenLoadModal = () => {
+      const saves = getSavedGames().sort((a,b) => b.timestamp - a.timestamp);
+      setSavedFiles(saves);
+      setShowLoadModal(true);
+  };
+
+  const handleLoadSpecificSave = (save: SaveData) => {
     setConfig(save.config);
     setTeams(save.teams);
     setMatches(save.matches);
-    setNews(save.news); // Keep as strings
+    setNews(save.news); 
     setCurrentRound(save.currentRound);
+    
+    setShowLoadModal(false);
     setView(ViewState.NEWS); // Go to dashboard
+  };
+
+  const handleDeleteSave = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      if (window.confirm("Are you sure you want to delete this save?")) {
+          const newSaves = savedFiles.filter(s => s.config.id !== id);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(newSaves));
+          setSavedFiles(newSaves);
+      }
   };
 
   // --- START GAME ---
@@ -341,11 +362,66 @@ const App: React.FC = () => {
 
   // --- VIEWS ---
 
+  // Load Game Modal
+  const LoadGameModal = () => (
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-gray-800 w-full max-w-lg rounded-xl shadow-2xl border border-gray-600 flex flex-col max-h-[80vh] animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-900 rounded-t-xl">
+                  <h3 className="text-white font-bold flex items-center gap-2">
+                      <Save size={18} /> LOAD GAME
+                  </h3>
+                  <button onClick={() => setShowLoadModal(false)} className="text-gray-400 hover:text-white">
+                      <X size={20} />
+                  </button>
+              </div>
+              
+              <div className="overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                  {savedFiles.length === 0 ? (
+                      <div className="text-center py-10 text-gray-500">No saved games found.</div>
+                  ) : (
+                      savedFiles.map((save) => (
+                          <div 
+                            key={save.config.id} 
+                            onClick={() => handleLoadSpecificSave(save)}
+                            className="bg-gray-700/50 hover:bg-gray-700 border border-gray-600 hover:border-blue-500 rounded-lg p-4 cursor-pointer transition-all group relative"
+                          >
+                              <div className="flex justify-between items-start">
+                                  <div className="flex items-center gap-3">
+                                      <div className={`p-2 rounded-full ${save.config.type === 'LEAGUE' ? 'bg-green-900/50 text-green-400' : 'bg-yellow-900/50 text-yellow-400'}`}>
+                                          {save.config.type === 'LEAGUE' ? <Trophy size={20} /> : <Shield size={20} />}
+                                      </div>
+                                      <div>
+                                          <h4 className="font-bold text-white text-sm md:text-base">{save.config.name}</h4>
+                                          <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                                              <span>Round {save.currentRound}</span>
+                                              <span className="w-1 h-1 bg-gray-500 rounded-full"></span>
+                                              <span className="flex items-center gap-1"><Clock size={10} /> {new Date(save.timestamp).toLocaleDateString()}</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                                  
+                                  <button 
+                                    onClick={(e) => handleDeleteSave(e, save.config.id)}
+                                    className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors z-10"
+                                    title="Delete Save"
+                                  >
+                                      <Trash2 size={16} />
+                                  </button>
+                              </div>
+                          </div>
+                      ))
+                  )}
+              </div>
+          </div>
+      </div>
+  );
+
   if (view === ViewState.HOME) {
       return (
           // Use 100dvh for mobile viewport height to include browser bars correctly
           // overflow-y-auto ensures scrolling if content exceeds height (e.g. landscape mobile)
-          <div className="min-h-[100dvh] bg-gray-900 flex flex-col items-center justify-center p-4 overflow-y-auto">
+          <div className="min-h-[100dvh] bg-gray-900 flex flex-col items-center justify-center p-4 overflow-y-auto relative">
+              {showLoadModal && <LoadGameModal />}
               <div className="max-w-md w-full bg-gray-800 rounded-xl shadow-2xl p-8 border border-gray-700 text-center space-y-8 animate-in fade-in duration-700 my-auto">
                   <div className="space-y-4 flex flex-col items-center">
                       <Logo size={120} />
@@ -359,7 +435,7 @@ const App: React.FC = () => {
                           NEW CAREER
                       </button>
                       <button 
-                        onClick={handleLoadGame}
+                        onClick={handleOpenLoadModal}
                         disabled={getSavedGames().length === 0}
                         className="w-full py-4 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white font-bold rounded-lg transition-transform active:scale-95 border-b-4 border-gray-900"
                       >
@@ -372,12 +448,17 @@ const App: React.FC = () => {
   }
 
   if (view === ViewState.SETUP) {
-    return <SetupScreen 
-        onStart={startLeague} 
-        onLoadGame={handleLoadGame} 
-        onCancel={() => setView(ViewState.HOME)} 
-        savedGamesCount={getSavedGames().length} 
-    />;
+    return (
+        <>
+            {showLoadModal && <LoadGameModal />}
+            <SetupScreen 
+                onStart={startLeague} 
+                onLoadGame={handleOpenLoadModal} 
+                onCancel={() => setView(ViewState.HOME)} 
+                savedGamesCount={getSavedGames().length} 
+            />
+        </>
+    );
   }
 
   const MobileNavButton = ({ v, icon: Icon, label }: { v: ViewState, icon: any, label: string }) => (
@@ -392,8 +473,10 @@ const App: React.FC = () => {
 
   return (
     // Main Container: Uses 100dvh to fix mobile scroll issues
-    <div className="h-[100dvh] bg-gray-900 text-gray-100 flex flex-col md:flex-row font-inter overflow-hidden">
+    <div className="h-[100dvh] bg-gray-900 text-gray-100 flex flex-col md:flex-row font-inter overflow-hidden relative">
       
+      {showLoadModal && <LoadGameModal />}
+
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-gray-900 border-r border-gray-800 flex-col fixed h-full z-20">
         <div className="p-6 border-b border-gray-800 flex flex-col items-center cursor-pointer hover:bg-gray-800/50 transition-colors" onClick={() => setView(ViewState.HOME)}>
